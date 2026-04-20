@@ -62,3 +62,11 @@ export function semesterRoman(session: Session, monthKey: MonthKey): string {
   const sem = computeSemester(session, monthKey);
   return ROMAN[sem - 1] ?? String(sem);
 }
+
+/** Reverse lookup: given a month and a semester number, find the matching session. */
+export function sessionFromSemesterMonth(sem: number, monthKey: MonthKey): Session | null {
+  for (const s of SESSIONS) {
+    if (computeSemester(s, monthKey) === sem) return s;
+  }
+  return null;
+}

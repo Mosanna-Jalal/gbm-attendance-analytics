@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { Attendance } from "@/models/Attendance";
 import { DEPARTMENTS, SESSIONS, MONTHS, computeSemester, type Session, type MonthKey } from "@/lib/constants";
+import { requireAuth } from "@/lib/authGuard";
 
 export async function POST(req: Request) {
+  const auth = await requireAuth();
+  if (!auth.ok) return auth.response;
   try {
     const body = await req.json();
     const { teacherName, department, session, monthKey, percentage, distinctionStudents } = body ?? {};

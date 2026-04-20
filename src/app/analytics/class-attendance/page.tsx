@@ -1,0 +1,615 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+  Cell,
+  ReferenceLine,
+} from "recharts";
+import { DEPARTMENTS, MONTHS, SESSIONS, ROMAN } from "@/lib/constants";
+import ResizableChart, { StackedTick } from "@/app/components/ResizableChart";
+import { pctClass, pctColor } from "@/lib/helpers";
+
+type Row = {
+  _id: string;
+  teacherName: string;
+  department: string;
+  faculty: string;
+  session: string;
+  semester: number;
+  monthKey: string;
+  percentage: number;
+};
+
+// 22 maximally-distinct colors (based on Trubetskoy's palette + curated adds),
+// ordered so adjacent indices land on different hue families.
+const DEPT_COLORS = [
+  "#e6194b", // 1  crimson
+  "#3cb44b", // 2  green
+  "#4363d8", // 3  blue
+  "#f58231", // 4  orange
+  "#911eb4", // 5  purple
+  "#42d4f4", // 6  cyan
+  "#f032e6", // 7  magenta
+  "#bfef45", // 8  lime
+  "#fabed4", // 9  pink
+  "#469990", // 10 teal
+  "#9a6324", // 11 brown
+  "#800000", // 12 maroon
+  "#aaffc3", // 13 mint
+  "#808000", // 14 olive
+  "#ffd8b1", // 15 apricot
+  "#000075", // 16 navy
+  "#dcbeff", // 17 lavender
+  "#ff69b4", // 18 hot pink
+  "#00bfff", // 19 deep sky blue
+  "#8b4513", // 20 saddle brown
+  "#7f7f7f", // 21 gray
+  "#ffe119", // 22 yellow
+];
+
+type View = "all" | "overall" | "custom";
+type Display = "chart" | "table";
+
+export default function ClassAttendancePage() {
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [err, setErr] = useState("");
+  const [view, setView] = useState<View>("all");
+  const [display, setDisplay] = useState<Display>("chart");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [sessionFilter, setSessionFilter] = useState<string[]>([]);
+  const [semesterFilter, setSemesterFilter] = useState<number[]>([]);
+
+  useEffect(() => {
+    fetch("/api/attendance")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) throw new Error(d.error);
+        setRows(d.rows);
+      })
+      .catch((e) => setErr(e.message));
+  }, []);
+
+  const availableSemesters = useMemo(() => {
+    const set = new Set<number>();
+    for (const r of rows ?? []) if (typeof r.semester === "number") set.add(r.semester);
+    return [...set].sort((a, b) => a - b);
+  }, [rows]);
+
+  const filteredRows = useMemo(
+    () =>
+      (rows ?? []).filter(
+        (r) =>
+          (!sessionFilter.length || sessionFilter.includes(r.session)) &&
+          (!semesterFilter.length || semesterFilter.includes(r.semester))
+      ),
+    [rows, sessionFilter, semesterFilter]
+  );
+
+  const monthLabels = MONTHS.map(
+    (m) => m.label.split(" ")[0].slice(0, 3) + " " + m.label.split(" ")[1].slice(2)
+  );
+
+  // Chart data: per-month, one field per department (avg %).
+  const chartData = useMemo(() => {
+    return MONTHS.map((m, i) => {
+      const row: Record<string, string | number | null> = { month: monthLabels[i] };
+      const allMonthPts = filteredRows.filter((r) => r.monthKey === m.key);
+      row._overall = allMonthPts.length
+        ? Number((allMonthPts.reduce((s, r) => s + r.percentage, 0) / allMonthPts.length).toFixed(2))
+        : null;
+      for (const d of DEPARTMENTS) {
+        const pts = filteredRows.filter((r) => r.department === d.name && r.monthKey === m.key);
+        row[d.name] = pts.length
+          ? Number((pts.reduce((s, r) => s + r.percentage, 0) / pts.length).toFixed(2))
+          : null;
+      }
+      return row;
+    });
+  }, [filteredRows, monthLabels]);
+
+  // Dept-level average for bar ranking
+  const deptAvg = useMemo(() => {
+    return DEPARTMENTS.map((d) => {
+      const pts = filteredRows.filter((r) => r.department === d.name);
+      const avg = pts.length ? pts.reduce((s, r) => s + r.percentage, 0) / pts.length : 0;
+      return { department: d.name, avg: Number(avg.toFixed(2)), count: pts.length };
+    })
+      .filter((x) => x.count > 0)
+      .sort((a, b) => b.avg - a.avg);
+  }, [filteredRows]);
+
+  const overallAvg = useMemo(() => {
+    if (!filteredRows.length) return 0;
+    return filteredRows.reduce((s, r) => s + r.percentage, 0) / filteredRows.length;
+  }, [filteredRows]);
+
+  const shownDepts = useMemo(() => {
+    if (view === "all") return DEPARTMENTS.map((d) => d.name);
+    if (view === "custom") return selected;
+    return [];
+  }, [view, selected]);
+
+  const matrix = useMemo(() => {
+    if (!filteredRows) return null;
+    const map = new Map<string, { sum: number; count: number }>();
+    for (const r of filteredRows) {
+      const key = `${r.department}__${r.monthKey}`;
+      const cur = map.get(key) ?? { sum: 0, count: 0 };
+      cur.sum += r.percentage;
+      cur.count += 1;
+      map.set(key, cur);
+    }
+    return map;
+  }, [filteredRows]);
+
+  function toggle(v: string) {
+    setSelected((arr) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]));
+  }
+  function toggleSession(v: string) {
+    setSessionFilter((arr) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]));
+  }
+  function toggleSemester(v: number) {
+    setSemesterFilter((arr) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]));
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {err && <div className="pct-low rounded-lg px-3 py-2 text-sm">{err}</div>}
+      {!rows && !err && <div className="text-foreground/60">Loading…</div>}
+
+      {rows && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Stat label="Overall Avg" value={`${overallAvg.toFixed(1)}%`} sub={`${filteredRows.length} submissions`} />
+            <Stat label="Best Dept" value={deptAvg[0] ? `${deptAvg[0].avg.toFixed(1)}%` : "—"} sub={deptAvg[0]?.department} />
+            <Stat label="Needs Attention" value={deptAvg.at(-1) ? `${deptAvg.at(-1)!.avg.toFixed(1)}%` : "—"} sub={deptAvg.at(-1)?.department} />
+          </div>
+
+          {/* View switcher + session filter */}
+          <div className="card rounded-2xl p-4 sm:p-5 flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-sm font-semibold">Display:</span>
+              <div className="inline-flex rounded-xl border border-foreground/15 p-1 bg-foreground/[0.03]">
+                {([
+                  ["chart", "📊 Chart"],
+                  ["table", "🗒 Table"],
+                ] as const).map(([v, l]) => (
+                  <button
+                    key={v}
+                    onClick={() => setDisplay(v)}
+                    className={`px-3.5 py-1.5 text-sm font-semibold rounded-lg transition ${
+                      display === v
+                        ? "brand-gradient text-white shadow-md shadow-indigo-500/30"
+                        : "text-foreground/70 hover:text-foreground"
+                    }`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold mr-1">View:</span>
+              {([
+                ["all", "All 22 Departments"],
+                ["overall", "Overall Average"],
+                ["custom", "Custom Selection"],
+              ] as const).map(([v, l]) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={`text-xs sm:text-sm px-3 py-1.5 rounded-full border transition ${
+                    view === v ? "brand-gradient text-white border-transparent" : "border-foreground/15 hover:border-foreground/40"
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <span className="text-sm font-semibold">Sessions:</span>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {SESSIONS.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => toggleSession(s)}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                        sessionFilter.includes(s)
+                          ? "brand-gradient text-white border-transparent"
+                          : "border-foreground/15 hover:border-foreground/40"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                  {sessionFilter.length > 0 && (
+                    <button onClick={() => setSessionFilter([])} className="text-xs text-indigo-500 hover:underline ml-1">
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-sm font-semibold">Semesters:</span>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {(availableSemesters.length ? availableSemesters : [1, 2, 3, 4, 5, 6, 7, 8]).map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => toggleSemester(n)}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                        semesterFilter.includes(n)
+                          ? "brand-gradient text-white border-transparent"
+                          : "border-foreground/15 hover:border-foreground/40"
+                      }`}
+                    >
+                      Sem {ROMAN[n - 1] ?? n}
+                    </button>
+                  ))}
+                  {semesterFilter.length > 0 && (
+                    <button onClick={() => setSemesterFilter([])} className="text-xs text-indigo-500 hover:underline ml-1">
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {view === "custom" && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold">Departments ({selected.length}):</span>
+                  {selected.length > 0 && (
+                    <button onClick={() => setSelected([])} className="text-xs text-indigo-500 hover:underline">
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                  {DEPARTMENTS.map((d) => (
+                    <button
+                      key={d.name}
+                      onClick={() => toggle(d.name)}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                        selected.includes(d.name) ? "brand-gradient text-white border-transparent" : "border-foreground/15 hover:border-foreground/40"
+                      }`}
+                    >
+                      {d.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {display === "chart" && (<>
+          {/* Main multi-line chart */}
+          <ResizableChart
+            title={
+              view === "all"
+                ? "All Departments — Monthly Trend"
+                : view === "overall"
+                  ? "Overall Average Attendance"
+                  : `Selected Departments (${shownDepts.length})`
+            }
+          >
+            {() => (
+              <ResponsiveContainer>
+                <LineChart data={chartData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="overallGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#6d28d9" />
+                      <stop offset="50%" stopColor="#4f46e5" />
+                      <stop offset="100%" stopColor="#ec4899" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(127,127,127,0.2)" />
+                  <XAxis dataKey="month" stroke="currentColor" tick={<StackedTick fontSize={10} />} interval={0} height={40} />
+                  <YAxis domain={[0, 100]} stroke="currentColor" tick={{ fontSize: 11 }} width={36} />
+                  <Tooltip
+                    cursor={{ stroke: "rgba(255,255,255,0.3)", strokeWidth: 1 }}
+                    wrapperStyle={{ outline: "none" }}
+                    content={<AttendanceTooltip />}
+                  />
+                  <ReferenceLine y={75} stroke="#10b981" strokeDasharray="4 4" label={{ value: "Target 75%", fill: "#10b981", fontSize: 11 }} />
+
+                  {view === "overall" ? (
+                    <Line
+                      type="monotone"
+                      dataKey="_overall"
+                      name="Overall Avg"
+                      stroke="url(#overallGrad)"
+                      strokeWidth={3.5}
+                      dot={{ r: 5, fill: "#6d28d9" }}
+                      activeDot={{ r: 7 }}
+                      connectNulls
+                    />
+                  ) : (
+                    <>
+                      {shownDepts.map((dept, i) => (
+                        <Line
+                          key={dept}
+                          type="monotone"
+                          dataKey={dept}
+                          stroke={DEPT_COLORS[DEPARTMENTS.findIndex((d) => d.name === dept) % DEPT_COLORS.length]}
+                          strokeWidth={view === "all" ? 1.5 : 2.5}
+                          dot={view === "all" ? false : { r: 3 }}
+                          activeDot={{ r: 5 }}
+                          connectNulls
+                        />
+                      ))}
+                      {view === "custom" && selected.length > 0 && (
+                        <Line
+                          type="monotone"
+                          dataKey="_overall"
+                          name="Overall Avg"
+                          stroke="#6d28d9"
+                          strokeWidth={2}
+                          strokeDasharray="6 4"
+                          dot={false}
+                          connectNulls
+                        />
+                      )}
+                    </>
+                  )}
+                  {(view === "custom" && selected.length <= 6) || view === "overall" ? <Legend /> : null}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </ResizableChart>
+
+          {view === "all" && (
+            <div className="card rounded-2xl p-4 sm:p-5 flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
+              {DEPARTMENTS.map((d, i) => (
+                <span key={d.name} className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block w-3 h-3 rounded-sm"
+                    style={{ backgroundColor: DEPT_COLORS[i % DEPT_COLORS.length] }}
+                  />
+                  <span className="text-foreground/80">{d.name}</span>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Dept ranking */}
+          <div className="card rounded-2xl p-4 sm:p-6">
+            <h2 className="font-bold mb-3">Department Ranking</h2>
+
+            {/* Mobile: compact ranked list */}
+            <ul className="sm:hidden flex flex-col gap-2">
+              {deptAvg.map((d, i) => {
+                const idx = DEPARTMENTS.findIndex((x) => x.name === d.department);
+                const color = DEPT_COLORS[idx % DEPT_COLORS.length];
+                return (
+                  <li key={d.department} className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-foreground/50 w-6 shrink-0 text-right">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-xs font-semibold truncate">{d.department}</span>
+                        <span className="text-xs font-bold whitespace-nowrap" style={{ color }}>{d.avg}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-foreground/10 overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${Math.min(100, d.avg)}%`, background: color }}
+                        />
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {/* Desktop / tablet: horizontal bar chart */}
+            <div className="hidden sm:block w-full" style={{ height: Math.max(260, deptAvg.length * 32 + 40) }}>
+              <ResponsiveContainer>
+                <BarChart data={deptAvg} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(127,127,127,0.2)" />
+                  <XAxis type="number" domain={[0, 100]} stroke="currentColor" />
+                  <YAxis type="category" dataKey="department" width={140} stroke="currentColor" tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{
+                      background: "rgba(27,19,64,0.95)",
+                      border: "1px solid #6d28d9",
+                      borderRadius: 12,
+                      color: "white",
+                    }}
+                    formatter={(v: unknown) => `${v}%`}
+                  />
+                  <Bar dataKey="avg" radius={[0, 8, 8, 0]}>
+                    {deptAvg.map((d) => {
+                      const idx = DEPARTMENTS.findIndex((x) => x.name === d.department);
+                      return <Cell key={d.department} fill={DEPT_COLORS[idx % DEPT_COLORS.length]} />;
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          </>)}
+
+          {display === "table" && (
+            <div className="card rounded-2xl overflow-hidden">
+              <div className="px-4 sm:px-6 py-3 border-b border-foreground/10 flex items-center justify-between">
+                <h2 className="font-bold">Department Ranking</h2>
+                <span className="text-xs text-foreground/60">{deptAvg.length} departments reporting</span>
+              </div>
+              <div className="overflow-auto">
+                <table className="w-full text-sm border-separate border-spacing-0">
+                  <thead className="text-white">
+                    <tr>
+                      <th className="text-left px-3 py-3 sticky top-0 brand-gradient w-12">#</th>
+                      <th className="text-left px-3 py-3 sticky top-0 brand-gradient">Department</th>
+                      <th className="text-left px-3 py-3 sticky top-0 brand-gradient">Faculty</th>
+                      <th className="text-right px-3 py-3 sticky top-0 brand-gradient">Submissions</th>
+                      <th className="text-right px-3 py-3 sticky top-0 brand-gradient">Average</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deptAvg.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-8 text-center text-foreground/60">
+                          No data for the selected filters.
+                        </td>
+                      </tr>
+                    )}
+                    {deptAvg.map((d, i) => {
+                      const meta = DEPARTMENTS.find((x) => x.name === d.department);
+                      return (
+                        <tr key={d.department} className={i % 2 ? "bg-foreground/[0.03]" : ""}>
+                          <td className="px-3 py-2 text-foreground/60 font-mono">{i + 1}</td>
+                          <td className="px-3 py-2 font-semibold">{d.department}</td>
+                          <td className="px-3 py-2 text-foreground/70">{meta?.faculty ?? "—"}</td>
+                          <td className="px-3 py-2 text-right">{d.count}</td>
+                          <td className="px-3 py-2 text-right">
+                            <span className={`inline-block min-w-[64px] px-2 py-1 rounded-lg font-bold ${pctClass(d.avg)}`}>
+                              {d.avg.toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Matrix */}
+          {matrix && (
+            <div className="card rounded-2xl overflow-hidden">
+              <div className="overflow-auto max-h-[70vh] relative">
+                <table className="w-full text-sm border-separate border-spacing-0">
+                  <thead className="text-white">
+                    <tr>
+                      <th className="text-left px-3 py-3 sticky top-0 left-0 z-30 brand-gradient">Department</th>
+                      {MONTHS.map((m) => (
+                        <th key={m.key} className="px-3 py-3 font-semibold whitespace-nowrap sticky top-0 z-20 brand-gradient">
+                          {m.label.split(" ")[0].slice(0, 3)} {m.label.split(" ")[1].slice(2)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DEPARTMENTS.map((d, i) => (
+                      <tr key={d.name}>
+                        <td
+                          className={`px-3 py-2 font-semibold whitespace-nowrap sticky left-0 z-10 ${
+                            i % 2 ? "bg-[color:color-mix(in_oklab,var(--background)_92%,#6d28d9_8%)]" : "bg-background"
+                          }`}
+                        >
+                          <div>{d.name}</div>
+                          <div className="text-xs text-foreground/60">{d.faculty}</div>
+                        </td>
+                        {MONTHS.map((m) => {
+                          const cell = matrix.get(`${d.name}__${m.key}`);
+                          if (!cell)
+                            return <td key={m.key} className="px-2 py-2 text-center text-foreground/30">—</td>;
+                          const avg = cell.sum / cell.count;
+                          return (
+                            <td key={m.key} className="px-2 py-2 text-center">
+                              <span className={`inline-block min-w-[56px] px-2 py-1 rounded-lg font-semibold ${pctClass(avg)}`}>
+                                {avg.toFixed(1)}%
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+type TooltipItem = { dataKey?: string | number; name?: string; value?: number | string | null; color?: string };
+
+function AttendanceTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: TooltipItem[];
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const items = payload
+    .filter((p) => p.value != null && !String(p.dataKey ?? "").startsWith("_"))
+    .map((p) => ({ ...p, value: Number(p.value) }))
+    .sort((a, b) => (b.value as number) - (a.value as number));
+
+  const overall = payload.find((p) => String(p.dataKey) === "_overall" && p.value != null);
+
+  const MAX = 8;
+  const shown = items.slice(0, MAX);
+  const hidden = items.length - shown.length;
+
+  return (
+    <div
+      className="rounded-xl px-3 py-2 text-xs shadow-xl"
+      style={{
+        background: "rgba(27,19,64,0.55)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        border: "1px solid rgba(167,139,250,0.45)",
+        color: "white",
+        minWidth: 180,
+        maxWidth: 260,
+        pointerEvents: "none",
+      }}
+    >
+      <div className="font-semibold mb-1 opacity-90">{label}</div>
+
+      {overall && (
+        <div className="flex items-center gap-1.5 pb-1 mb-1 border-b border-white/10">
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "#ec4899" }} />
+          <span className="opacity-80">Overall Avg</span>
+          <span className="ml-auto font-bold">{Number(overall.value).toFixed(1)}%</span>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-0.5">
+        {shown.length === 0 && !overall && <div className="opacity-60">No data</div>}
+        {shown.map((it) => (
+          <div key={String(it.dataKey)} className="flex items-center gap-1.5 whitespace-nowrap">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: it.color }} />
+            <span className="opacity-80 truncate">{it.name}</span>
+            <span className="ml-auto font-semibold">{(it.value as number).toFixed(1)}%</span>
+          </div>
+        ))}
+        {hidden > 0 && <div className="opacity-60 pt-1 text-[0.7rem]">+ {hidden} more department{hidden === 1 ? "" : "s"}</div>}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="card rounded-2xl p-4">
+      <div className="text-xs uppercase tracking-wide text-foreground/60">{label}</div>
+      <div className="text-2xl sm:text-3xl font-extrabold brand-gradient-text mt-1">{value}</div>
+      {sub && <div className="text-xs text-foreground/60 mt-1 truncate">{sub}</div>}
+    </div>
+  );
+}

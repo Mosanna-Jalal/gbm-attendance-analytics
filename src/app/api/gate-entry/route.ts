@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { GateEntry } from "@/models/GateEntry";
+import { requireAuth } from "@/lib/authGuard";
 
 function isValidDateKey(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
@@ -9,6 +10,8 @@ function isValidDateKey(s: string): boolean {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireAuth();
+  if (!auth.ok) return auth.response;
   try {
     const body = await req.json();
     await connectDB();
@@ -79,6 +82,8 @@ export async function GET() {
 }
 
 export async function DELETE(req: Request) {
+  const auth = await requireAuth();
+  if (!auth.ok) return auth.response;
   try {
     const { dateKey } = await req.json();
     if (!isValidDateKey(String(dateKey)))
