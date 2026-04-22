@@ -58,6 +58,7 @@ export default function GateEntryPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, []);
 
@@ -299,7 +300,7 @@ export default function GateEntryPage() {
           </div>
 
           {/* Daily chart */}
-          <div className="card rounded-2xl p-4 sm:p-6">
+          <div className="card-chart rounded-2xl p-4 sm:p-6">
             <h2 className="font-bold mb-3">Daily Gate Entries</h2>
             <div className="w-full h-[320px]">
               <ResponsiveContainer>
@@ -346,7 +347,7 @@ export default function GateEntryPage() {
 
           {/* Weekday pattern */}
           {weekday.some((w) => w.days > 0) && (
-            <div className="card rounded-2xl p-4 sm:p-6">
+            <div className="card-chart rounded-2xl p-4 sm:p-6">
               <h2 className="font-bold mb-3">Weekday Pattern (avg entries per day of week)</h2>
               <div className="w-full h-[260px]">
                 <ResponsiveContainer>
@@ -378,7 +379,7 @@ export default function GateEntryPage() {
 
           {/* Monthly chart */}
           {monthly.length > 0 && (
-            <div className="card rounded-2xl p-4 sm:p-6">
+            <div className="card-chart rounded-2xl p-4 sm:p-6">
               <h2 className="font-bold mb-3">Monthly Totals</h2>
               <div className="w-full h-[280px]">
                 <ResponsiveContainer>

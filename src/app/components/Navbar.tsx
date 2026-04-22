@@ -34,6 +34,7 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStripOpen(false);
     setMobileOpen(false);
   }, [pathname]);
@@ -90,6 +91,17 @@ export default function Navbar() {
                 <ChevronIcon open={stripOpen} />
               </button>
 
+              <Link
+                href="/submit"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg brand-gradient text-white font-semibold shadow-md shadow-indigo-500/30 hover:brightness-110 transition"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+                <span>Submit</span>
+              </Link>
+
               {user ? (
                 <button
                   onClick={logout}
@@ -98,26 +110,33 @@ export default function Navbar() {
                   Logout
                 </button>
               ) : (
-                <>
-                  <Link href="/submit" className="px-3 py-1.5 rounded-lg hover:bg-foreground/5 transition">
-                    Submit
-                  </Link>
-                  <Link href="/" className="px-3 py-1.5 rounded-lg hover:bg-foreground/5 transition">
-                    Admin
-                  </Link>
-                </>
+                <Link href="/" className="px-3 py-1.5 rounded-lg hover:bg-foreground/5 transition">
+                  Admin
+                </Link>
               )}
             </nav>
 
-            {/* Mobile hamburger */}
-            <button
-              onClick={() => setMobileOpen((v) => !v)}
-              aria-label="Menu"
-              aria-expanded={mobileOpen}
-              className="md:hidden w-10 h-10 rounded-xl border border-foreground/15 inline-flex items-center justify-center active:scale-95 transition"
-            >
-              {mobileOpen ? <CloseIcon /> : <HamburgerIcon />}
-            </button>
+            {/* Mobile: Submit + hamburger */}
+            <div className="md:hidden flex items-center gap-2">
+              <Link
+                href="/submit"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg brand-gradient text-white font-semibold text-sm shadow-md shadow-indigo-500/30 active:scale-95 transition"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+                Submit
+              </Link>
+              <button
+                onClick={() => setMobileOpen((v) => !v)}
+                aria-label="Menu"
+                aria-expanded={mobileOpen}
+                className="w-10 h-10 rounded-xl border border-foreground/15 inline-flex items-center justify-center active:scale-95 transition"
+              >
+                {mobileOpen ? <CloseIcon /> : <HamburgerIcon />}
+              </button>
+            </div>
           </div>
 
           {/* Desktop analytics strip */}

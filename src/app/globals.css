@@ -95,6 +95,21 @@ body {
   }
 }
 
+/* Charts keep a light surface in every theme so the 22 distinct line colors
+   (incl. light mints/lemons) stay readable. Axis/tick text is forced dark
+   because Recharts uses stroke="currentColor" to inherit foreground. */
+.card-chart {
+  background: #ffffff;
+  color: #1b1340;
+  backdrop-filter: blur(14px) saturate(1.1);
+  border: 1px solid color-mix(in oklab, #6d28d9 15%, transparent);
+  box-shadow:
+    0 1px 2px rgba(27, 19, 64, 0.04),
+    0 8px 24px -10px rgba(76, 29, 149, 0.18),
+    0 30px 60px -30px rgba(236, 72, 153, 0.15);
+  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+}
+
 .pct-low {
   background: linear-gradient(135deg, #fee2e2, #fecaca);
   color: #991b1b;

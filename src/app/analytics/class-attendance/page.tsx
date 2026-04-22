@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -14,10 +14,13 @@ import {
   Legend,
   Cell,
   ReferenceLine,
+  useXAxisScale,
+  useYAxisScale,
+  useActiveTooltipCoordinate,
 } from "recharts";
 import { DEPARTMENTS, MONTHS, SESSIONS, ROMAN } from "@/lib/constants";
 import ResizableChart, { StackedTick } from "@/app/components/ResizableChart";
-import { pctClass, pctColor } from "@/lib/helpers";
+import { pctClass } from "@/lib/helpers";
 
 type Row = {
   _id: string;
@@ -68,6 +71,20 @@ export default function ClassAttendancePage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [sessionFilter, setSessionFilter] = useState<string[]>([]);
   const [semesterFilter, setSemesterFilter] = useState<number[]>([]);
+
+  // Shared hover state used by the tooltip/overlay to figure out which curve
+  // the cursor is actually touching. Updated synchronously from LineChart's
+  // onMouseMove. `nearestKey` is computed in NearestCurveLabel (which reads
+  // axis scales via Recharts 3.x hooks) and read by the tooltip.
+  const hoverRef = useRef<{
+    x: number | null;
+    y: number | null;
+    nearestKey: string | null;
+  }>({
+    x: null,
+    y: null,
+    nearestKey: null,
+  });
 
   useEffect(() => {
     fetch("/api/attendance")
@@ -308,7 +325,26 @@ export default function ClassAttendancePage() {
           >
             {() => (
               <ResponsiveContainer>
-                <LineChart data={chartData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+                  onMouseMove={(state: unknown) => {
+                    const s = state as {
+                      chartX?: number;
+                      chartY?: number;
+                      activeCoordinate?: { x?: number; y?: number };
+                    } | null;
+                    const x = s?.chartX ?? s?.activeCoordinate?.x;
+                    const y = s?.chartY ?? s?.activeCoordinate?.y;
+                    hoverRef.current.x = typeof x === "number" ? x : null;
+                    hoverRef.current.y = typeof y === "number" ? y : null;
+                  }}
+                  onMouseLeave={() => {
+                    hoverRef.current.x = null;
+                    hoverRef.current.y = null;
+                    hoverRef.current.nearestKey = null;
+                  }}
+                >
                   <defs>
                     <linearGradient id="overallGrad" x1="0" y1="0" x2="1" y2="0">
                       <stop offset="0%" stopColor="#6d28d9" />
@@ -319,10 +355,17 @@ export default function ClassAttendancePage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(127,127,127,0.2)" />
                   <XAxis dataKey="month" stroke="currentColor" tick={<StackedTick fontSize={10} />} interval={0} height={40} />
                   <YAxis domain={[0, 100]} stroke="currentColor" tick={{ fontSize: 11 }} width={36} />
+                  {/* Rendered before Tooltip so the tooltip reads a fresh
+                      `nearestKey` in the same render pass. */}
+                  <NearestCurveLabel
+                    hoverRef={hoverRef}
+                    shownDepts={shownDepts}
+                    chartData={chartData}
+                  />
                   <Tooltip
                     cursor={{ stroke: "rgba(255,255,255,0.3)", strokeWidth: 1 }}
                     wrapperStyle={{ outline: "none" }}
-                    content={<AttendanceTooltip />}
+                    content={<AttendanceTooltip hoverRef={hoverRef} />}
                   />
                   <ReferenceLine y={75} stroke="#10b981" strokeDasharray="4 4" label={{ value: "Target 75%", fill: "#10b981", fontSize: 11 }} />
 
@@ -339,7 +382,7 @@ export default function ClassAttendancePage() {
                     />
                   ) : (
                     <>
-                      {shownDepts.map((dept, i) => (
+                      {shownDepts.map((dept) => (
                         <Line
                           key={dept}
                           type="monotone"
@@ -386,7 +429,7 @@ export default function ClassAttendancePage() {
           )}
 
           {/* Dept ranking */}
-          <div className="card rounded-2xl p-4 sm:p-6">
+          <div className="card-chart rounded-2xl p-4 sm:p-6">
             <h2 className="font-bold mb-3">Department Ranking</h2>
 
             {/* Mobile: compact ranked list */}
@@ -543,27 +586,49 @@ export default function ClassAttendancePage() {
 
 type TooltipItem = { dataKey?: string | number; name?: string; value?: number | string | null; color?: string };
 
+type HoverRef = {
+  current: {
+    x: number | null;
+    y: number | null;
+    nearestKey: string | null;
+  };
+};
+
+// Ref is intentionally read during render: Recharts re-renders the tooltip and
+// overlay on every mousemove, so we pick up the latest hover state without
+// triggering React re-renders ourselves.
+/* eslint-disable react-hooks/refs */
 function AttendanceTooltip({
   active,
   payload,
   label,
+  hoverRef,
 }: {
   active?: boolean;
   payload?: TooltipItem[];
   label?: string;
+  hoverRef?: HoverRef;
 }) {
   if (!active || !payload?.length) return null;
 
   const items = payload
     .filter((p) => p.value != null && !String(p.dataKey ?? "").startsWith("_"))
-    .map((p) => ({ ...p, value: Number(p.value) }))
-    .sort((a, b) => (b.value as number) - (a.value as number));
+    .map((p) => ({ ...p, value: Number(p.value) }));
 
   const overall = payload.find((p) => String(p.dataKey) === "_overall" && p.value != null);
 
-  const MAX = 8;
-  const shown = items.slice(0, MAX);
-  const hidden = items.length - shown.length;
+  // The Customized overlay does pixel-interpolated nearest detection using the
+  // axis scales — trust its answer.
+  const nearestKey: string | number | null = hoverRef?.current?.nearestKey ?? null;
+
+  const nearest = nearestKey != null ? items.find((i) => i.dataKey === nearestKey) : null;
+  const rest = nearest
+    ? items.filter((i) => i.dataKey !== nearestKey).sort((a, b) => (b.value as number) - (a.value as number))
+    : items.slice().sort((a, b) => (b.value as number) - (a.value as number));
+
+  const MAX_REST = nearest ? 4 : 8;
+  const shown = rest.slice(0, MAX_REST);
+  const hidden = rest.length - shown.length;
 
   return (
     <div
@@ -581,6 +646,24 @@ function AttendanceTooltip({
     >
       <div className="font-semibold mb-1 opacity-90">{label}</div>
 
+      {nearest && (
+        <div
+          className="flex items-center gap-2 px-2 py-1.5 -mx-1 mb-1 rounded-lg"
+          style={{
+            background: `color-mix(in oklab, ${nearest.color} 20%, transparent)`,
+            border: `1.5px solid ${nearest.color}`,
+            boxShadow: `0 0 0 1px ${nearest.color}33`,
+          }}
+        >
+          <span className="font-bold shrink-0" style={{ color: nearest.color }}>▶</span>
+          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: nearest.color }} />
+          <span className="font-bold truncate">{nearest.name}</span>
+          <span className="ml-auto font-extrabold" style={{ color: nearest.color }}>
+            {(nearest.value as number).toFixed(1)}%
+          </span>
+        </div>
+      )}
+
       {overall && (
         <div className="flex items-center gap-1.5 pb-1 mb-1 border-b border-white/10">
           <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "#ec4899" }} />
@@ -590,11 +673,11 @@ function AttendanceTooltip({
       )}
 
       <div className="flex flex-col gap-0.5">
-        {shown.length === 0 && !overall && <div className="opacity-60">No data</div>}
+        {shown.length === 0 && !overall && !nearest && <div className="opacity-60">No data</div>}
         {shown.map((it) => (
-          <div key={String(it.dataKey)} className="flex items-center gap-1.5 whitespace-nowrap">
+          <div key={String(it.dataKey)} className="flex items-center gap-1.5 whitespace-nowrap opacity-70">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: it.color }} />
-            <span className="opacity-80 truncate">{it.name}</span>
+            <span className="truncate">{it.name}</span>
             <span className="ml-auto font-semibold">{(it.value as number).toFixed(1)}%</span>
           </div>
         ))}
@@ -603,6 +686,153 @@ function AttendanceTooltip({
     </div>
   );
 }
+
+// Floats a small labeled arrow at the cursor pointing to the curve whose
+// interpolated pixel Y at the actual cursor X is nearest. Uses Recharts 3.x
+// hooks (useXAxisScale/useYAxisScale/useIsTooltipActive) — the deprecated
+// Customized wrapper does not forward xAxisMap/yAxisMap as props.
+function NearestCurveLabel({
+  hoverRef,
+  shownDepts,
+  chartData,
+}: {
+  hoverRef: HoverRef;
+  shownDepts: string[];
+  chartData: Record<string, string | number | null>[];
+}) {
+  const xScale = useXAxisScale();
+  const yScale = useYAxisScale();
+  // Subscribing to the tooltip coordinate makes this component re-render on
+  // every mousemove (the selector returns a new object per interaction update).
+  // `useIsTooltipActive` only flips on enter/leave, so it can't drive live
+  // mouse tracking by itself. We read the raw cursor X/Y from hoverRef because
+  // the tooltip's own coordinate.x is snapped to the nearest tick in LineChart.
+  const active = useActiveTooltipCoordinate();
+
+  const cursorX = hoverRef.current.x;
+  const cursorY = hoverRef.current.y;
+
+  if (!active || !xScale || !yScale || cursorX == null || cursorY == null) {
+    hoverRef.current.nearestKey = null;
+    return null;
+  }
+
+  // Each tick's pixel X — used to pick the segment around the cursor.
+  const tickPx: number[] = [];
+  for (const r of chartData) {
+    const px = xScale(r.month as string);
+    if (px == null || !Number.isFinite(px)) return null;
+    tickPx.push(px);
+  }
+  if (tickPx.length === 0) return null;
+  const firstPx = tickPx[0]!;
+  const lastPx = tickPx[tickPx.length - 1]!;
+
+  // Segment [lo, hi] surrounding cursorX.
+  let lo = 0;
+  let hi = 0;
+  if (cursorX < firstPx) {
+    lo = 0; hi = 0;
+  } else if (cursorX > lastPx) {
+    lo = tickPx.length - 1; hi = tickPx.length - 1;
+  } else {
+    for (let i = 0; i < tickPx.length - 1; i++) {
+      if (cursorX >= tickPx[i]! && cursorX <= tickPx[i + 1]!) {
+        lo = i; hi = i + 1;
+        break;
+      }
+    }
+  }
+
+  const loPx = tickPx[lo]!;
+  const hiPx = tickPx[hi]!;
+  const segLen = hiPx - loPx;
+  const t = segLen > 0 ? (cursorX - loPx) / segLen : 0;
+
+  let nearest: { name: string; value: number; x: number; y: number; color: string } | null = null;
+  let best = Infinity;
+
+  for (const dept of shownDepts) {
+    const loRaw = chartData[lo]?.[dept];
+    const hiRaw = chartData[hi]?.[dept];
+    let vAt: number | null = null;
+    if (loRaw != null && hiRaw != null) vAt = Number(loRaw) + (Number(hiRaw) - Number(loRaw)) * t;
+    else if (loRaw != null) vAt = Number(loRaw);
+    else if (hiRaw != null) vAt = Number(hiRaw);
+    if (vAt == null) continue;
+
+    const yPxInterp = yScale(vAt);
+    if (yPxInterp == null || !Number.isFinite(yPxInterp)) continue;
+    const d = Math.abs(yPxInterp - cursorY);
+    if (d < best) {
+      best = d;
+      // Snap the marker to the nearer actual data point on this curve.
+      const snapIdx = t < 0.5 ? lo : hi;
+      const snapRaw = chartData[snapIdx]?.[dept] ?? chartData[lo]?.[dept] ?? chartData[hi]?.[dept];
+      const snapV = snapRaw != null ? Number(snapRaw) : vAt;
+      const snapX = tickPx[snapIdx];
+      const snapY = yScale(snapV);
+      if (snapX == null || snapY == null) continue;
+      nearest = {
+        name: dept,
+        value: snapV,
+        x: snapX,
+        y: snapY,
+        color: DEPT_COLORS[DEPARTMENTS.findIndex((dd) => dd.name === dept) % DEPT_COLORS.length],
+      };
+    }
+  }
+
+  if (!nearest) {
+    hoverRef.current.nearestKey = null;
+    return null;
+  }
+
+  hoverRef.current.nearestKey = nearest.name;
+
+  const text = nearest.name;
+  const approxW = Math.min(text.length * 6.8 + 24, 200);
+  // Flip the pill left if it would run past the last tick.
+  const placeRight = nearest.x + approxW + 14 < lastPx + 20;
+  const pillX = placeRight ? nearest.x + 10 : nearest.x - approxW - 10;
+  const pillY = nearest.y - 12;
+  const arrowFromX = placeRight ? pillX : pillX + approxW;
+
+  return (
+    <g pointerEvents="none">
+      <line
+        x1={nearest.x}
+        y1={nearest.y}
+        x2={arrowFromX}
+        y2={nearest.y}
+        stroke={nearest.color}
+        strokeWidth={1.25}
+      />
+      <circle cx={nearest.x} cy={nearest.y} r={4} fill={nearest.color} stroke="white" strokeWidth={1.5} />
+      <rect
+        x={pillX}
+        y={pillY}
+        width={approxW}
+        height={22}
+        rx={11}
+        fill="rgba(27,19,64,0.92)"
+        stroke={nearest.color}
+        strokeWidth={1.25}
+      />
+      <text
+        x={pillX + 10}
+        y={pillY + 15}
+        fill="white"
+        fontSize={11}
+        fontWeight={700}
+      >
+        {text}
+      </text>
+    </g>
+  );
+}
+
+/* eslint-enable react-hooks/refs */
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (

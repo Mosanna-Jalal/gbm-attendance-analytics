@@ -155,7 +155,7 @@ export default function AnalyticsPage() {
             />
           </div>
 
-          <div className="card rounded-2xl p-4 sm:p-6">
+          <div className="card-chart rounded-2xl p-4 sm:p-6">
             <h2 className="font-bold mb-3">Monthly Trend (Sep 2025 → Mar 2026)</h2>
             <div className="w-full h-[320px]">
               <ResponsiveContainer>
@@ -194,7 +194,7 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="card rounded-2xl p-4 sm:p-6">
+          <div className="card-chart rounded-2xl p-4 sm:p-6">
             <h2 className="font-bold mb-3">Department Ranking (avg %)</h2>
             <div className="w-full" style={{ height: Math.max(260, byDept.length * 32 + 40) }}>
               <ResponsiveContainer>
@@ -221,7 +221,7 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="card rounded-2xl p-4 sm:p-6">
+          <div className="card-chart rounded-2xl p-4 sm:p-6">
             <h2 className="font-bold mb-3">Monthly Comparison — by Department</h2>
             <p className="text-xs text-foreground/60 mb-3">
               {deptFilter.length === 0

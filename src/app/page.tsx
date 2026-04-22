@@ -104,7 +104,11 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => setLoggedIn(Boolean(d.user)))
+      .then((d) => {
+        const authed = Boolean(d.user);
+        setLoggedIn(authed);
+        if (authed) window.location.replace("/analytics/class-attendance");
+      })
       .catch(() => setLoggedIn(false));
   }, []);
 

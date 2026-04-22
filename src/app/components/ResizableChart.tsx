@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, ReactNode } from "react";
+import { useEffect, useState, ReactNode } from "react";
 
 // Splits a label on whitespace and renders each chunk on its own line.
 // Use as: <XAxis tick={<StackedTick />} />
@@ -52,8 +52,19 @@ export default function ResizableChart({
 }) {
   const [size, setSize] = useState<Size>(defaultSize);
 
+  // On desktop, promote the compact default to medium so first paint after
+  // hydration shows a readable chart. Mobile keeps whatever `defaultSize` sets.
+  useEffect(() => {
+    if (defaultSize !== "sm") return;
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(min-width: 768px)").matches) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSize("md");
+    }
+  }, [defaultSize]);
+
   return (
-    <div className="card rounded-2xl p-4 sm:p-6">
+    <div className="card-chart rounded-2xl p-4 sm:p-6">
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <h2 className="font-bold">{title}</h2>
         <div className="flex items-center gap-2">
