@@ -256,7 +256,7 @@ export default function AdmissionsPage() {
                   <ResponsiveContainer>
                     <LineChart
                       data={progressionData}
-                      margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+                      margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
                       onMouseMove={(state: unknown) => {
                         const s = state as {
                           chartX?: number;
@@ -276,7 +276,7 @@ export default function AdmissionsPage() {
                     >
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(127,127,127,0.2)" />
                       <XAxis dataKey="semLabel" stroke="currentColor" tick={{ fontSize: 11 }} interval={0} />
-                      <YAxis stroke="currentColor" tick={{ fontSize: 11 }} width={40} />
+                      <YAxis stroke="currentColor" tick={{ fontSize: 11 }} width={52} />
                       {/* Rendered before Tooltip so the tooltip reads a fresh
                           `nearestKey` in the same render pass. */}
                       <NearestLineLabel
