@@ -4,19 +4,29 @@ import { Admission, STREAMS } from "@/models/Admission";
 import { SESSIONS } from "@/lib/constants";
 import { requireAuth } from "@/lib/authGuard";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   try {
     await connectDB();
     const rows = await Admission.find({}).sort({ session: 1, stream: 1, semester: 1 }).lean();
-    return NextResponse.json({
-      rows: rows.map((r) => ({
-        _id: String(r._id),
-        session: r.session,
-        stream: r.stream,
-        semester: r.semester,
-        count: r.count,
-      })),
-    });
+    return NextResponse.json(
+      {
+        rows: rows.map((r) => ({
+          _id: String(r._id),
+          session: r.session,
+          stream: r.stream,
+          semester: r.semester,
+          count: r.count,
+        })),
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Server error";
     return NextResponse.json({ error: msg }, { status: 500 });

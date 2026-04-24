@@ -4,6 +4,11 @@ import { Attendance } from "@/models/Attendance";
 import { DEPARTMENTS, SESSIONS, MONTHS, computeSemester, type Session, type MonthKey } from "@/lib/constants";
 import { requireAuth } from "@/lib/authGuard";
 
+// Attendance analytics must reflect every newly-submitted row immediately;
+// tell Next/Vercel never to serve a cached snapshot of this endpoint.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function POST(req: Request) {
   const auth = await requireAuth();
   if (!auth.ok) return auth.response;
@@ -67,20 +72,27 @@ export async function GET() {
   try {
     await connectDB();
     const rows = await Attendance.find({}).sort({ monthKey: 1, department: 1 }).lean();
-    return NextResponse.json({
-      rows: rows.map((r) => ({
-        _id: String(r._id),
-        teacherName: r.teacherName,
-        department: r.department,
-        faculty: r.faculty,
-        session: r.session,
-        semester: r.semester,
-        monthKey: r.monthKey,
-        percentage: r.percentage,
-        distinctionStudents: r.distinctionStudents ?? [],
-        createdAt: r.createdAt,
-      })),
-    });
+    return NextResponse.json(
+      {
+        rows: rows.map((r) => ({
+          _id: String(r._id),
+          teacherName: r.teacherName,
+          department: r.department,
+          faculty: r.faculty,
+          session: r.session,
+          semester: r.semester,
+          monthKey: r.monthKey,
+          percentage: r.percentage,
+          distinctionStudents: r.distinctionStudents ?? [],
+          createdAt: r.createdAt,
+        })),
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Server error";
     return NextResponse.json({ error: msg }, { status: 500 });

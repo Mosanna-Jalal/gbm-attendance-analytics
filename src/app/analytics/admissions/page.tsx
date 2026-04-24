@@ -58,13 +58,26 @@ export default function AdmissionsPage() {
   });
 
   useEffect(() => {
-    fetch("/api/admission")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) throw new Error(d.error);
-        setRows(d.rows);
-      })
-      .catch((e) => setErr(e.message));
+    let cancelled = false;
+    const load = () => {
+      fetch("/api/admission", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          if (d.error) throw new Error(d.error);
+          setRows(d.rows);
+        })
+        .catch((e) => !cancelled && setErr(e.message));
+    };
+    load();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const sessions = useMemo(
@@ -480,7 +493,7 @@ function AdmissionsTooltip({
           <span className="font-bold shrink-0" style={{ color: nearest.color }}>▶</span>
           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: nearest.color }} />
           <span className="font-bold truncate">{nearest.name ?? String(nearest.dataKey)}</span>
-          <span className="ml-auto font-extrabold" style={{ color: nearest.color }}>
+          <span className="ml-auto font-extrabold" style={{ color: "#ffffff" }}>
             {(nearest.value as number).toLocaleString()}
           </span>
         </div>

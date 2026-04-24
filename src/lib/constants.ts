@@ -1,24 +1,19 @@
-export type Faculty = "ARTS" | "SCIENCE" | "COMMERCE" | "GENERAL";
+export type Faculty = "ARTS" | "SCIENCE" | "COMMERCE" | "BLIS";
 
 export const DEPARTMENTS: { name: string; faculty: Faculty }[] = [
   { name: "ACCOUNTS", faculty: "COMMERCE" },
   { name: "BOTANY", faculty: "SCIENCE" },
-  { name: "BUSINESS ECONOMICS AND ENVIRONMENT", faculty: "COMMERCE" },
-  { name: "BUSINESS MANAGEMENT AND COMMUNICATION", faculty: "COMMERCE" },
-  { name: "BUSINESS ORGANISATION", faculty: "COMMERCE" },
   { name: "CHEMISTRY", faculty: "SCIENCE" },
   { name: "ECONOMICS", faculty: "ARTS" },
   { name: "ENGLISH", faculty: "ARTS" },
-  { name: "GENERAL", faculty: "GENERAL" },
   { name: "HINDI", faculty: "ARTS" },
   { name: "HISTORY", faculty: "ARTS" },
   { name: "HOME SCIENCE", faculty: "ARTS" },
-  { name: "LIBRARY", faculty: "GENERAL" },
-  { name: "OFFICE", faculty: "GENERAL" },
+  { name: "LIBRARY SCIENCE", faculty: "BLIS" },
+  { name: "MATHEMATICS", faculty: "SCIENCE" },
   { name: "PHILOSOPHY", faculty: "ARTS" },
   { name: "PHYSICS", faculty: "SCIENCE" },
   { name: "POLITICAL SCIENCE", faculty: "ARTS" },
-  { name: "PRINCIPLE OF ECONOMICS", faculty: "COMMERCE" },
   { name: "PSYCHOLOGY", faculty: "ARTS" },
   { name: "SANSKRIT", faculty: "ARTS" },
   { name: "URDU", faculty: "ARTS" },

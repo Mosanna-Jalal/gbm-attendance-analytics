@@ -3,6 +3,9 @@ import { connectDB } from "@/lib/mongodb";
 import { GateEntry } from "@/models/GateEntry";
 import { requireAuth } from "@/lib/authGuard";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function isValidDateKey(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const d = new Date(s + "T00:00:00Z");
@@ -67,14 +70,21 @@ export async function GET() {
   try {
     await connectDB();
     const rows = await GateEntry.find({}).sort({ dateKey: 1 }).lean();
-    return NextResponse.json({
-      rows: rows.map((r) => ({
-        _id: String(r._id),
-        dateKey: r.dateKey,
-        count: r.count,
-        note: r.note ?? "",
-      })),
-    });
+    return NextResponse.json(
+      {
+        rows: rows.map((r) => ({
+          _id: String(r._id),
+          dateKey: r.dateKey,
+          count: r.count,
+          note: r.note ?? "",
+        })),
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Server error";
     return NextResponse.json({ error: msg }, { status: 500 });

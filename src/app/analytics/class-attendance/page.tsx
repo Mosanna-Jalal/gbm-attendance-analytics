@@ -87,13 +87,28 @@ export default function ClassAttendancePage() {
   });
 
   useEffect(() => {
-    fetch("/api/attendance")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) throw new Error(d.error);
-        setRows(d.rows);
-      })
-      .catch((e) => setErr(e.message));
+    let cancelled = false;
+    const load = () => {
+      fetch("/api/attendance", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          if (d.error) throw new Error(d.error);
+          setRows(d.rows);
+        })
+        .catch((e) => !cancelled && setErr(e.message));
+    };
+    load();
+    // Refetch when the tab regains focus so teachers who just submitted in
+    // another tab see the updated chart without a hard reload.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const availableSemesters = useMemo(() => {
@@ -219,13 +234,22 @@ export default function ClassAttendancePage() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold mr-1">View:</span>
               {([
-                ["all", "All 22 Departments"],
+                ["all", `All ${DEPARTMENTS.length} Departments`],
                 ["overall", "Overall Average"],
                 ["custom", "Custom Selection"],
               ] as const).map(([v, l]) => (
                 <button
                   key={v}
-                  onClick={() => setView(v)}
+                  onClick={() => {
+                    if (v === view) return;
+                    setView(v);
+                    // Switching views resets every sub-filter so each view
+                    // starts from a clean slate — the session/semester picks
+                    // from the previous view shouldn't silently apply here.
+                    setSelected([]);
+                    setSessionFilter([]);
+                    setSemesterFilter([]);
+                  }}
                   className={`text-xs sm:text-sm px-3 py-1.5 rounded-full border transition ${
                     view === v ? "brand-gradient text-white border-transparent" : "border-foreground/15 hover:border-foreground/40"
                   }`}
@@ -471,6 +495,8 @@ export default function ClassAttendancePage() {
                       borderRadius: 12,
                       color: "white",
                     }}
+                    itemStyle={{ color: "#ffffff" }}
+                    labelStyle={{ color: "#ffffff" }}
                     formatter={(v: unknown) => `${v}%`}
                   />
                   <Bar dataKey="avg" radius={[0, 8, 8, 0]}>
@@ -658,7 +684,7 @@ function AttendanceTooltip({
           <span className="font-bold shrink-0" style={{ color: nearest.color }}>▶</span>
           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: nearest.color }} />
           <span className="font-bold truncate">{nearest.name}</span>
-          <span className="ml-auto font-extrabold" style={{ color: nearest.color }}>
+          <span className="ml-auto font-extrabold" style={{ color: "#ffffff" }}>
             {(nearest.value as number).toFixed(1)}%
           </span>
         </div>

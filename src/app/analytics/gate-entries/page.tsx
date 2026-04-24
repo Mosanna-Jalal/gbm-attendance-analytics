@@ -36,13 +36,26 @@ export default function GateEntriesAnalytics() {
   const [display, setDisplay] = useState<"chart" | "table">("chart");
 
   useEffect(() => {
-    fetch("/api/gate-entry")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) throw new Error(d.error);
-        setRows(d.rows);
-      })
-      .catch((e) => setErr(e.message));
+    let cancelled = false;
+    const load = () => {
+      fetch("/api/gate-entry", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          if (d.error) throw new Error(d.error);
+          setRows(d.rows);
+        })
+        .catch((e) => !cancelled && setErr(e.message));
+    };
+    load();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const filtered = useMemo(() => {
