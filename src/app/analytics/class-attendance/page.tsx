@@ -18,7 +18,16 @@ import {
   useYAxisScale,
   useActiveTooltipCoordinate,
 } from "recharts";
-import { DEPARTMENTS, MONTHS, SESSIONS, ROMAN } from "@/lib/constants";
+import { DEPARTMENTS, MONTHS, SESSIONS, ROMAN, STREAMS, type Faculty, type Stream } from "@/lib/constants";
+
+// Each course in the dropdown maps to one Faculty bucket — picking "B.A"
+// keeps only ARTS depts, "BLIS" keeps only the BLIS dept, etc.
+const COURSE_TO_FACULTY: Record<Stream, Faculty> = {
+  "B.A": "ARTS",
+  "B.Sc": "SCIENCE",
+  "B.Com": "COMMERCE",
+  "BLIS": "BLIS",
+};
 import ResizableChart, { StackedTick } from "@/app/components/ResizableChart";
 import { pctClass } from "@/lib/helpers";
 
@@ -71,6 +80,7 @@ export default function ClassAttendancePage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [sessionFilter, setSessionFilter] = useState<string[]>([]);
   const [semesterFilter, setSemesterFilter] = useState<number[]>([]);
+  const [courseFilter, setCourseFilter] = useState<Stream[]>([]);
 
   // Shared hover state used by the tooltip/overlay to figure out which curve
   // the cursor is actually touching. Updated synchronously from LineChart's
@@ -117,14 +127,20 @@ export default function ClassAttendancePage() {
     return [...set].sort((a, b) => a - b);
   }, [rows]);
 
+  const allowedFaculties = useMemo(
+    () => new Set(courseFilter.map((c) => COURSE_TO_FACULTY[c])),
+    [courseFilter]
+  );
+
   const filteredRows = useMemo(
     () =>
       (rows ?? []).filter(
         (r) =>
           (!sessionFilter.length || sessionFilter.includes(r.session)) &&
-          (!semesterFilter.length || semesterFilter.includes(r.semester))
+          (!semesterFilter.length || semesterFilter.includes(r.semester)) &&
+          (!courseFilter.length || allowedFaculties.has(r.faculty as Faculty))
       ),
-    [rows, sessionFilter, semesterFilter]
+    [rows, sessionFilter, semesterFilter, courseFilter, allowedFaculties]
   );
 
   const monthLabels = MONTHS.map(
@@ -166,10 +182,14 @@ export default function ClassAttendancePage() {
   }, [filteredRows]);
 
   const shownDepts = useMemo(() => {
-    if (view === "all") return DEPARTMENTS.map((d) => d.name);
+    if (view === "all") {
+      return DEPARTMENTS
+        .filter((d) => courseFilter.length === 0 || allowedFaculties.has(d.faculty))
+        .map((d) => d.name);
+    }
     if (view === "custom") return selected;
     return [];
-  }, [view, selected]);
+  }, [view, selected, courseFilter.length, allowedFaculties]);
 
   const matrix = useMemo(() => {
     if (!filteredRows) return null;
@@ -192,6 +212,22 @@ export default function ClassAttendancePage() {
   }
   function toggleSemester(v: number) {
     setSemesterFilter((arr) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]));
+  }
+  function toggleCourse(v: Stream) {
+    setCourseFilter((arr) => {
+      const next = arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
+      // Drop any custom-picked dept that no longer matches the new course set.
+      if (next.length > 0) {
+        const allowed = new Set(next.map((c) => COURSE_TO_FACULTY[c]));
+        setSelected((picked) =>
+          picked.filter((name) => {
+            const meta = DEPARTMENTS.find((d) => d.name === name);
+            return meta && allowed.has(meta.faculty);
+          })
+        );
+      }
+      return next;
+    });
   }
 
   return (
@@ -249,6 +285,7 @@ export default function ClassAttendancePage() {
                     setSelected([]);
                     setSessionFilter([]);
                     setSemesterFilter([]);
+                    setCourseFilter([]);
                   }}
                   className={`text-xs sm:text-sm px-3 py-1.5 rounded-full border transition ${
                     view === v ? "brand-gradient text-white border-transparent" : "border-foreground/15 hover:border-foreground/40"
@@ -309,6 +346,30 @@ export default function ClassAttendancePage() {
               </div>
             </div>
 
+            <div>
+              <span className="text-sm font-semibold">Courses:</span>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {STREAMS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => toggleCourse(c)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                      courseFilter.includes(c)
+                        ? "brand-gradient text-white border-transparent"
+                        : "border-foreground/15 hover:border-foreground/40"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+                {courseFilter.length > 0 && (
+                  <button onClick={() => setCourseFilter([])} className="text-xs text-indigo-500 hover:underline ml-1">
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
             {view === "custom" && (
               <div>
                 <div className="flex items-center justify-between">
@@ -320,7 +381,9 @@ export default function ClassAttendancePage() {
                   )}
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto pr-1">
-                  {DEPARTMENTS.map((d) => (
+                  {DEPARTMENTS.filter(
+                    (d) => courseFilter.length === 0 || allowedFaculties.has(d.faculty)
+                  ).map((d) => (
                     <button
                       key={d.name}
                       onClick={() => toggle(d.name)}
@@ -440,15 +503,18 @@ export default function ClassAttendancePage() {
 
           {view === "all" && (
             <div className="card rounded-2xl p-4 sm:p-5 flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
-              {DEPARTMENTS.map((d, i) => (
-                <span key={d.name} className="inline-flex items-center gap-1.5">
-                  <span
-                    className="inline-block w-3 h-3 rounded-sm"
-                    style={{ backgroundColor: DEPT_COLORS[i % DEPT_COLORS.length] }}
-                  />
-                  <span className="text-foreground/80">{d.name}</span>
-                </span>
-              ))}
+              {DEPARTMENTS.map((d, i) => {
+                if (courseFilter.length > 0 && !allowedFaculties.has(d.faculty)) return null;
+                return (
+                  <span key={d.name} className="inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm"
+                      style={{ backgroundColor: DEPT_COLORS[i % DEPT_COLORS.length] }}
+                    />
+                    <span className="text-foreground/80">{d.name}</span>
+                  </span>
+                );
+              })}
             </div>
           )}
 
@@ -574,7 +640,9 @@ export default function ClassAttendancePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {DEPARTMENTS.map((d, i) => (
+                    {DEPARTMENTS.filter(
+                      (d) => courseFilter.length === 0 || allowedFaculties.has(d.faculty)
+                    ).map((d, i) => (
                       <tr key={d.name}>
                         <td
                           className={`px-3 py-2 font-semibold whitespace-nowrap sticky left-0 z-10 ${
