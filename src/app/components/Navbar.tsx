@@ -10,9 +10,16 @@ const ANALYTICS_LINKS = [
   { href: "/analytics/admissions", label: "Session Admissions", desc: "Enrolment progression" },
 ];
 
+const SUBMIT_LINKS = [
+  { href: "/submit", label: "Feed Attendance", desc: "Per-month percentage by department" },
+  { href: "/admin/gate-entry", label: "Feed Gate Entries", desc: "Daily footfall counts" },
+  { href: "/admin/admissions", label: "Feed Admissions", desc: "Enrolment counts per session" },
+];
+
 export default function Navbar() {
   const [user, setUser] = useState<string | null>(null);
   const [stripOpen, setStripOpen] = useState(false);
+  const [submitOpen, setSubmitOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -27,7 +34,10 @@ export default function Navbar() {
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setStripOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setStripOpen(false);
+        setSubmitOpen(false);
+      }
     }
     document.addEventListener("click", onClick);
     return () => document.removeEventListener("click", onClick);
@@ -36,6 +46,7 @@ export default function Navbar() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setStripOpen(false);
+    setSubmitOpen(false);
     setMobileOpen(false);
   }, [pathname]);
 
@@ -61,7 +72,7 @@ export default function Navbar() {
   return (
     <>
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/70 border-b border-foreground/10">
-        <div ref={ref} onMouseEnter={() => setStripOpen(true)} onMouseLeave={() => setStripOpen(false)}>
+        <div ref={ref}>
           <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
             <Link href="/" className="flex items-center gap-2 font-bold text-lg shrink-0 group">
               <span className="w-9 h-9 rounded-xl brand-gradient grid place-items-center text-white shadow-lg shadow-indigo-500/30 group-hover:scale-105 transition">
@@ -82,7 +93,10 @@ export default function Navbar() {
               </Link>
 
               <button
-                onClick={() => setStripOpen((v) => !v)}
+                onClick={() => {
+                  setStripOpen((v) => !v);
+                  setSubmitOpen(false);
+                }}
                 className={`px-3 py-1.5 rounded-lg hover:bg-foreground/5 inline-flex items-center gap-1 transition ${
                   stripOpen ? "bg-foreground/5" : ""
                 }`}
@@ -91,16 +105,20 @@ export default function Navbar() {
                 <ChevronIcon open={stripOpen} />
               </button>
 
-              <Link
-                href="/submit"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg brand-gradient text-white font-semibold shadow-md shadow-indigo-500/30 hover:brightness-110 transition"
+              <button
+                onClick={() => {
+                  setSubmitOpen((v) => !v);
+                  setStripOpen(false);
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg brand-gradient text-white font-semibold shadow-md shadow-indigo-500/30 hover:brightness-110 transition ${submitOpen ? "brightness-110" : ""}`}
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 20h9" />
                   <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
                 </svg>
                 <span>Submit</span>
-              </Link>
+                <ChevronIcon open={submitOpen} />
+              </button>
 
               {user ? (
                 <button
@@ -162,6 +180,30 @@ export default function Navbar() {
               </div>
             </div>
           )}
+
+          {/* Desktop submit strip */}
+          {submitOpen && (
+            <div className="hidden md:block bg-[#1b1340] dark:bg-black text-white border-t border-white/10 shadow-xl animate-strip-slide">
+              <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-1 overflow-x-auto">
+                {SUBMIT_LINKS.map((l) => {
+                  const active = pathname === l.href;
+                  return (
+                    <Link
+                      key={l.href}
+                      href={l.href}
+                      onClick={() => setSubmitOpen(false)}
+                      className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                        active ? "bg-white/15 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <span>{l.label}</span>
+                      <span className="hidden md:inline text-xs text-white/50 font-normal">— {l.desc}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -191,16 +233,23 @@ export default function Navbar() {
                 </MobileLink>
               ))}
 
+              <MobileGroupLabel className="mt-3">Submit</MobileGroupLabel>
+              {SUBMIT_LINKS.map((l) => (
+                <MobileLink key={l.href} href={l.href} onClick={() => setMobileOpen(false)}>
+                  <EditIcon />
+                  <div className="flex flex-col">
+                    <span>{l.label}</span>
+                    <span className="text-xs text-foreground/60 font-normal">{l.desc}</span>
+                  </div>
+                </MobileLink>
+              ))}
+
               <MobileGroupLabel className="mt-3">Account</MobileGroupLabel>
               {user ? (
                 <>
                   <MobileLink href="/admin/dashboard" onClick={() => setMobileOpen(false)}>
                     <DashboardIcon />
                     Dashboard
-                  </MobileLink>
-                  <MobileLink href="/admin/gate-entry" onClick={() => setMobileOpen(false)}>
-                    <GateIcon />
-                    Gate Entries (Admin)
                   </MobileLink>
                   <button
                     onClick={logout}
@@ -211,16 +260,10 @@ export default function Navbar() {
                   </button>
                 </>
               ) : (
-                <>
-                  <MobileLink href="/submit" onClick={() => setMobileOpen(false)}>
-                    <EditIcon />
-                    Teacher · Submit attendance
-                  </MobileLink>
-                  <MobileLink href="/" onClick={() => setMobileOpen(false)}>
-                    <LockIcon />
-                    Admin · Sign in
-                  </MobileLink>
-                </>
+                <MobileLink href="/" onClick={() => setMobileOpen(false)}>
+                  <LockIcon />
+                  Admin · Sign in
+                </MobileLink>
               )}
             </div>
           </div>
@@ -287,13 +330,6 @@ function DashboardIcon() {
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="7" height="9" /><rect x="14" y="3" width="7" height="5" />
       <rect x="14" y="12" width="7" height="9" /><rect x="3" y="16" width="7" height="5" />
-    </svg>
-  );
-}
-function GateIcon() {
-  return (
-    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21V7l9-4 9 4v14" /><path d="M9 21V11h6v10" />
     </svg>
   );
 }

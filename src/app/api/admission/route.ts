@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
-import { Admission, STREAMS } from "@/models/Admission";
-import { SESSIONS } from "@/lib/constants";
+import { Admission } from "@/models/Admission";
+import {
+  SESSIONS,
+  STREAMS,
+  SESSION_DURATION_SEMS,
+  isValidSessionStreamPair,
+  type Session,
+  type Stream,
+} from "@/lib/constants";
 import { requireAuth } from "@/lib/authGuard";
 
 export const dynamic = "force-dynamic";
@@ -45,9 +52,11 @@ export async function POST(req: Request) {
       for (const e of body.entries) {
         if (!SESSIONS.includes(e?.session)) continue;
         if (!STREAMS.includes(e?.stream)) continue;
+        if (!isValidSessionStreamPair(e.session as Session, e.stream as Stream)) continue;
         const sem = Number(e?.semester);
         const count = Number(e?.count);
-        if (!Number.isInteger(sem) || sem < 1 || sem > 8) continue;
+        const maxSem = SESSION_DURATION_SEMS[e.session as Session];
+        if (!Number.isInteger(sem) || sem < 1 || sem > maxSem) continue;
         if (!Number.isFinite(count) || count < 0) continue;
         ops.push({
           updateOne: {
@@ -70,9 +79,15 @@ export async function POST(req: Request) {
     const { session, stream, semester, count } = body ?? {};
     if (!SESSIONS.includes(session)) return NextResponse.json({ error: "Invalid session" }, { status: 400 });
     if (!STREAMS.includes(stream)) return NextResponse.json({ error: "Invalid stream" }, { status: 400 });
+    if (!isValidSessionStreamPair(session as Session, stream as Stream))
+      return NextResponse.json(
+        { error: `Session ${session} and stream ${stream} cannot be combined (BLIS only pairs with 2025-26).` },
+        { status: 400 }
+      );
     const sem = Number(semester);
-    if (!Number.isInteger(sem) || sem < 1 || sem > 8)
-      return NextResponse.json({ error: "Semester 1–8" }, { status: 400 });
+    const maxSem = SESSION_DURATION_SEMS[session as Session];
+    if (!Number.isInteger(sem) || sem < 1 || sem > maxSem)
+      return NextResponse.json({ error: `Semester must be between 1 and ${maxSem} for session ${session}` }, { status: 400 });
     const c = Number(count);
     if (!Number.isFinite(c) || c < 0) return NextResponse.json({ error: "Invalid count" }, { status: 400 });
 

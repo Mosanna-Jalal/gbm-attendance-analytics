@@ -60,10 +60,22 @@ export default function DashboardPage() {
         </div>
         <div className="flex gap-2">
           <a
+            href="/submit"
+            className="px-4 py-2 rounded-xl border border-foreground/20 hover:bg-foreground/5 text-sm font-semibold"
+          >
+            Feed Attendance
+          </a>
+          <a
             href="/admin/gate-entry"
             className="px-4 py-2 rounded-xl border border-foreground/20 hover:bg-foreground/5 text-sm font-semibold"
           >
-            Gate Entries
+            Feed Gate Entries
+          </a>
+          <a
+            href="/admin/admissions"
+            className="px-4 py-2 rounded-xl border border-foreground/20 hover:bg-foreground/5 text-sm font-semibold"
+          >
+            Feed Admissions
           </a>
           <a
             href="/admin/analytics"

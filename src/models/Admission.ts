@@ -1,7 +1,9 @@
 import mongoose, { Schema, InferSchemaType, Model } from "mongoose";
+import { STREAMS, type Stream } from "@/lib/constants";
 
-export const STREAMS = ["B.A", "B.Sc", "B.Com"] as const;
-export type Stream = (typeof STREAMS)[number];
+// Re-export so existing server-side imports `from "@/models/Admission"` keep working.
+export { STREAMS };
+export type { Stream };
 
 const AdmissionSchema = new Schema(
   {

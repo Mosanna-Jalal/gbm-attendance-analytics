@@ -37,73 +37,181 @@ export default function MethodologyPage() {
         </p>
       </Section>
 
-      <Section title="2. Class Attendance">
+      <Section title="2. Class Attendance — calculations">
         <p>
-          Each entry in the database is one triple <em>(department, session, month)</em> with a percentage that the
-          teacher submitted.
+          Every row in the database is one submission: <em>(teacher, department, session, semester, month, %)</em>.
+          A single department/month can have multiple submissions — different teachers, different sessions, or even
+          different semesters of the same dept all sit side-by-side as separate rows.
         </p>
-        <List>
-          <li>
-            <strong>Per-department line:</strong> the raw monthly percentage for that department, plotted month by
-            month. No smoothing, no averaging — exactly what was submitted.
-          </li>
-          <li>
-            <strong>Overall-average line:</strong> for each month,
-            <Formula inline>
-              overall_avg(month) = Σ department_pct / count(departments that reported that month)
-            </Formula>
-            Departments that didn&apos;t submit for a month are <strong>skipped</strong>, not treated as zero — a
-            silent dept shouldn&apos;t drag the average down.
-          </li>
-          <li>
-            <strong>Session filter:</strong> sessions act as a distinct-row key, not a weighting. A department that
-            submitted for two sessions in the same month contributes two points on its line.
-          </li>
-        </List>
+
+        <Sub title="2.1 Per-department line (Chart view)">
+          <p>For each (department, month) the chart plots the <strong>arithmetic mean</strong> of every matching submission after filters are applied:</p>
+          <Formula>
+            dept_pct(month) = Σ percentage / count   ⟶ over all rows where row.department = D and row.monthKey = month
+          </Formula>
+          <Example>
+            <div className="mb-1.5 font-semibold">Example — ENGLISH for Nov 2025:</div>
+            <table className="w-full text-xs">
+              <thead className="text-foreground/60">
+                <tr><th className="text-left py-1">Teacher</th><th className="text-left">Session</th><th className="text-left">Sem</th><th className="text-right">%</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>A</td><td>2023-27</td><td>V</td><td className="text-right">80</td></tr>
+                <tr><td>A</td><td>2024-28</td><td>III</td><td className="text-right">70</td></tr>
+                <tr><td>B</td><td>2023-27</td><td>V</td><td className="text-right">90</td></tr>
+                <tr><td>B</td><td>2025-29</td><td>I</td><td className="text-right">60</td></tr>
+              </tbody>
+            </table>
+            <div className="mt-1.5">ENGLISH point on Nov 2025 = (80 + 70 + 90 + 60) / 4 = <strong>75%</strong></div>
+          </Example>
+        </Sub>
+
+        <Sub title="2.2 Overall-average line">
+          <p>For each month, the average is taken across <em>every</em> filtered submission — not across departments. Departments that submitted twice contribute twice; departments that didn&apos;t submit are simply absent (not treated as 0).</p>
+          <Formula>
+            overall_pct(month) = Σ percentage / count   ⟶ over all filtered rows where row.monthKey = month
+          </Formula>
+          <Example>
+            <div className="mb-1.5 font-semibold">Example — Nov 2025, two depts reporting:</div>
+            <div>ENGLISH: 80, 70, 90, 60 (4 submissions, mean 75%)</div>
+            <div>HISTORY: 65, 55 (2 submissions, mean 60%)</div>
+            <div className="mt-1.5">Overall = (80 + 70 + 90 + 60 + 65 + 55) / 6 = <strong>70%</strong></div>
+            <div className="text-foreground/60 mt-1">(Not 67.5% — that would be the dept-weighted mean. ENGLISH submitted more times so it pulls the bar slightly higher.)</div>
+          </Example>
+        </Sub>
+
+        <Sub title="2.3 Department Ranking (bar chart on the right)">
+          <p>Mean of every filtered submission for that dept across <strong>all</strong> months — i.e. the dept&apos;s overall standing, not month-by-month:</p>
+          <Formula>dept_rank(D) = Σ percentage / count   ⟶ over all filtered rows where row.department = D</Formula>
+          <Example>
+            ENGLISH submissions across Sep 2025 → Mar 2026 (24 rows, sum 1740) ⟶ 1740 / 24 = <strong>72.5%</strong>. Departments with zero matching rows are dropped from the ranking entirely.
+          </Example>
+        </Sub>
+
+        <Sub title="2.4 Filter interactions">
+          <p>Filters work as <strong>row-level inclusions</strong>. A row only contributes to a calculation if it passes every active filter; means are then taken over the surviving rows.</p>
+          <List>
+            <li>
+              <strong>Session filter</strong> (multi-select). No selection = include every session. With sessions checked, only rows whose <code>session</code> is in the selected set survive.
+            </li>
+            <li>
+              <strong>Semester filter</strong> (multi-select). Same logic on the <code>semester</code> column.
+            </li>
+            <li>
+              <strong>Combining session + semester</strong>: a row must match <em>both</em> sets (logical AND across filter rows, OR within each row).
+            </li>
+            <li>
+              <strong>View toggle</strong>: changes which lines are drawn, not which rows survive.
+              <ul className="list-disc pl-5 mt-0.5 space-y-0.5 text-foreground/75">
+                <li><em>All N Departments</em>: one line per dept that has any data.</li>
+                <li><em>Overall Average</em>: a single line using the overall_pct formula above.</li>
+                <li><em>Custom Selection</em>: only the dept lines you&apos;ve picked, plus a dashed overall line for context.</li>
+              </ul>
+            </li>
+            <li>
+              Switching <strong>View</strong> resets sessions/semesters/depts to empty so each view starts clean.
+            </li>
+          </List>
+
+          <Example>
+            <div className="mb-1.5 font-semibold">Worked example — same Nov 2025 data as 2.1, different filter combos:</div>
+            <table className="w-full text-xs">
+              <thead className="text-foreground/60">
+                <tr><th className="text-left py-1">Filters</th><th className="text-left">Surviving rows</th><th className="text-right">ENGLISH point</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>(none)</td><td>80, 70, 90, 60</td><td className="text-right">75%</td></tr>
+                <tr><td>Session = 2023-27</td><td>80, 90</td><td className="text-right">85%</td></tr>
+                <tr><td>Session = 2024-28</td><td>70</td><td className="text-right">70%</td></tr>
+                <tr><td>Session = 2023-27, Sem V</td><td>80, 90</td><td className="text-right">85%</td></tr>
+                <tr><td>Session = 2025-29, Sem V</td><td>(none)</td><td className="text-right">— (gap)</td></tr>
+                <tr><td>Sem I + Sem III</td><td>70, 60</td><td className="text-right">65%</td></tr>
+              </tbody>
+            </table>
+            <div className="text-foreground/60 mt-2">Empty result = the line shows a gap that month, not a zero.</div>
+          </Example>
+        </Sub>
+
+        <Sub title="2.5 Why an absent dept is a gap, not a zero">
+          <p>A silent department means &quot;no information&quot; — not &quot;0% attended&quot;. Treating non-submission as zero would unfairly drag both the dept ranking and the overall line down. The chart leaves the gap, the tooltip skips that dept for that month, and the average is computed only over what was actually reported.</p>
+        </Sub>
       </Section>
 
       <Section title="3. Gate Entries (daily student footfall)">
         <p>Each row is one day&apos;s count from the gate register, optionally with a note.</p>
         <List>
           <li>
-            <strong>Daily chart:</strong> raw counts per date, drawn as a gradient area.
+            <strong>Daily chart:</strong> raw counts per date, drawn as a gradient area. No averaging — every point is exactly what was logged.
           </li>
           <li>
-            <strong>Daily-average reference line:</strong>
+            <strong>Daily-average reference line:</strong>{" "}
             <Formula inline>daily_avg = Σ counts / number_of_days_recorded</Formula>
           </li>
           <li>
-            <strong>Weekday pattern:</strong> for each weekday,
+            <strong>Weekday pattern:</strong>{" "}
             <Formula inline>weekday_avg = Σ counts_on_that_weekday / days_recorded_for_that_weekday</Formula>
             Weekdays with zero recorded days (e.g. Sundays) are omitted rather than shown as zero.
           </li>
-          <li>
-            <strong>Monthly totals:</strong> sum of all daily counts within the calendar month.
-          </li>
+          <li><strong>Monthly totals:</strong> sum of all daily counts within the calendar month.</li>
         </List>
+        <Example>
+          <div className="mb-1.5 font-semibold">Example — three Mondays logged this term:</div>
+          <div>02-Sep: 1,200 · 09-Sep: 1,150 · 16-Sep: 1,400</div>
+          <div className="mt-1.5">Monday weekday_avg = (1200 + 1150 + 1400) / 3 = <strong>1,250</strong></div>
+          <div className="mt-1">If September has these three Mondays plus a few Tue/Wed entries totalling 8,500, the September monthly total = 1200 + 1150 + 1400 + 8500 = <strong>12,250</strong>.</div>
+        </Example>
       </Section>
 
       <Section title="4. Session Admissions (enrolment progression)">
         <p>
-          Each row is one <em>(session, stream, semester)</em> → student count, taken from the official enrolment
-          sheet.
+          Each row is one <em>(session, stream, semester)</em> → student count, taken from the official enrolment register. Rows are upserted, so re-saving the same triple updates the count rather than adding a duplicate.
         </p>
-        <List>
-          <li>
-            <strong>Progression chart:</strong> one line per session × stream, plotted against semesters I – VIII.
-            Reads as attrition or retention as a batch advances.
-          </li>
-          <li>
-            <strong>Session totals:</strong> Σ counts across all semesters of the session — total{" "}
-            <em>student-semester</em> enrolments, not unique students (a student in Sem V is counted separately from
-            that same student when they were in Sem I).
-          </li>
-          <li>
-            <strong>Total enrolled (latest sem):</strong> for each (session, stream) pair, take only the{" "}
-            <em>highest semester</em> recorded, then sum. This is the best available estimate of{" "}
-            <em>students currently on-roll</em>.
-          </li>
-        </List>
+
+        <Sub title="4.1 Progression chart (line per session × stream)">
+          <p>One curve per (session, stream) combination. The Y value at each semester is just the recorded count for that semester — falling lines mean attrition, flat lines mean retention.</p>
+          <Example>
+            <div className="mb-1.5 font-semibold">2023-27 · B.Sc enrolment register:</div>
+            <div>Sem I: 100 · Sem II: 90 · Sem III: 80 · Sem IV: 75</div>
+            <div className="mt-1.5">10 students left between Sem I and Sem II, another 10 between II and III, another 5 between III and IV. The chart curve drops 100 → 90 → 80 → 75 — one line, four points. <strong>It is not 100 + 90 + 80 + 75 = 345.</strong></div>
+          </Example>
+          <p className="text-foreground/70">
+            Cross-rule: <code>2025-26</code> is reserved for <code>BLIS</code> (1-year, 2-semester course). The chart hides combinations like <em>2025-26 · B.A</em> that the data model forbids.
+          </p>
+        </Sub>
+
+        <Sub title="4.2 “Currently on roll” cards (the per-session totals)">
+          <p>For each (session, stream) take only the row with the <strong>highest semester recorded</strong>, then sum across streams within the session. This estimates current head-count, not lifetime enrolment.</p>
+          <Formula>
+            session_total(S) = Σ count(latest_sem of (S, stream))   for every stream that has any row under S
+          </Formula>
+          <Example>
+            <div className="mb-1.5 font-semibold">Example — session 2023-27:</div>
+            <table className="w-full text-xs">
+              <thead className="text-foreground/60">
+                <tr><th className="text-left py-1">Stream</th><th className="text-left">Sems recorded</th><th className="text-right">Latest sem count</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>B.A</td><td>I (960), II (866)</td><td className="text-right">866</td></tr>
+                <tr><td>B.Sc</td><td>I (570), II (511)</td><td className="text-right">511</td></tr>
+                <tr><td>B.Com</td><td>I (200), II (180)</td><td className="text-right">180</td></tr>
+              </tbody>
+            </table>
+            <div className="mt-1.5">Session 2023-27 “currently on roll” = 866 + 511 + 180 = <strong>1,557</strong>. (Not 960 + 866 + 570 + 511 + 200 + 180 = 3,287 — that would double-count students by counting them in every semester they passed through.)</div>
+          </Example>
+          <p className="text-foreground/70">
+            The same logic powers the <em>Total Enrolled (latest sem)</em> stat at the top — it just sums the per-session totals.
+          </p>
+        </Sub>
+
+        <Sub title="4.3 Key Pattern Changes (attrition spotlight)">
+          <p>For every (session, stream), every consecutive semester pair (i, i+1) is scanned; if count drops, the drop and percentage are recorded. The top 5 by percentage drop are listed.</p>
+          <Formula>
+            drop = count(i) − count(i+1)   ·   pct = drop / count(i) × 100
+          </Formula>
+          <Example>
+            2023-27 · B.A goes 960 → 866 from Sem I to Sem II. Drop = 94, pct = 94 / 960 × 100 = <strong>9.8%</strong>. That row appears in Key Pattern Changes ranked against every other (session, stream) pair.
+          </Example>
+        </Sub>
       </Section>
 
       <Section title="5. Duplicate handling">
@@ -168,6 +276,23 @@ function Formula({ children, inline }: { children: React.ReactNode; inline?: boo
     <pre className="my-1 px-3 py-2 rounded-lg bg-foreground/10 text-xs font-mono overflow-auto leading-relaxed whitespace-pre-wrap">
       {children}
     </pre>
+  );
+}
+
+function Sub({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-3 first:mt-1">
+      <h3 className="font-semibold text-[0.95rem] mb-1">{title}</h3>
+      <div className="flex flex-col gap-2">{children}</div>
+    </div>
+  );
+}
+
+function Example({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-indigo-300/30 bg-indigo-500/5 px-3 py-2 text-[0.8rem] leading-relaxed">
+      {children}
+    </div>
   );
 }
 

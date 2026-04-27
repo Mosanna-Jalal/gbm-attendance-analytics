@@ -39,6 +39,24 @@ export function sessionsForFaculty(faculty: Faculty): readonly Session[] {
   return SESSIONS.filter((s) => SESSION_DURATION_SEMS[s] !== 2);
 }
 
+// Cross-rule used by the admissions feed form + API: the 2025-26 session is
+// reserved for the BLIS stream, and BLIS only ever pairs with 2025-26.
+export function streamsForSession(session: Session | ""): readonly Stream[] {
+  if (!session) return STREAMS;
+  if (session === "2025-26") return ["BLIS"];
+  return STREAMS.filter((s) => s !== "BLIS");
+}
+
+export function sessionsForStream(stream: Stream | ""): readonly Session[] {
+  if (!stream) return SESSIONS;
+  if (stream === "BLIS") return ["2025-26"];
+  return SESSIONS.filter((s) => s !== "2025-26");
+}
+
+export function isValidSessionStreamPair(session: Session, stream: Stream): boolean {
+  return (session === "2025-26") === (stream === "BLIS");
+}
+
 // Anchor for the academic timeline. We list every month from this date through
 // the current calendar month so the dropdown auto-extends as time passes.
 const MONTHS_ANCHOR = { year: 2025, month: 9 } as const;
@@ -97,6 +115,11 @@ export type MonthKey = string;
 export const MONTHS: readonly MonthRow[] = getMonths();
 
 export const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"] as const;
+
+// Admission streams. Lives here (not in /models/Admission) so client pages
+// can import without dragging mongoose into the browser bundle.
+export const STREAMS = ["B.A", "B.Sc", "B.Com", "BLIS"] as const;
+export type Stream = (typeof STREAMS)[number];
 
 /**
  * Auto-compute the current semester a batch is in, given session + month.

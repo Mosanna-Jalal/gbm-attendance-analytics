@@ -17,6 +17,7 @@ import {
   useActiveTooltipCoordinate,
 } from "recharts";
 import ResizableChart from "@/app/components/ResizableChart";
+import { isValidSessionStreamPair, type Session, type Stream } from "@/lib/constants";
 
 type Row = { _id: string; session: string; stream: string; semester: number; count: number };
 
@@ -89,6 +90,26 @@ export default function AdmissionsPage() {
     [rows]
   );
 
+  // Auto-hide pills that can't coexist with the current selection. The only
+  // current constraint is BLIS ↔ 2025-26 (each pairs only with the other), so
+  // selecting one collapses the opposing row to its compatible options.
+  const visibleSessions = useMemo(() => {
+    const picked = [...streamFilter];
+    if (picked.length === 0) return sessions;
+    const blisPicked = picked.includes("BLIS");
+    const otherPicked = picked.some((s) => s !== "BLIS");
+    return sessions.filter((s) => {
+      if (s === "2025-26") return blisPicked;
+      return otherPicked;
+    });
+  }, [sessions, streamFilter]);
+
+  const visibleStreams = useMemo(() => {
+    if (focusSession === "all") return streams;
+    if (focusSession === "2025-26") return streams.filter((s) => s === "BLIS");
+    return streams.filter((s) => s !== "BLIS");
+  }, [streams, focusSession]);
+
   const activeStreams = useMemo(
     () => (streamFilter.size === 0 ? streams : streams.filter((s) => streamFilter.has(s))),
     [streams, streamFilter]
@@ -101,6 +122,25 @@ export default function AdmissionsPage() {
       else n.add(s);
       return n;
     });
+    // BLIS only pairs with 2025-26 — flip focusSession if the new stream
+    // selection makes the current session pick incompatible.
+    if (s === "BLIS" && focusSession !== "all" && focusSession !== "2025-26") {
+      setFocusSession("all");
+    }
+    if (s !== "BLIS" && focusSession === "2025-26") {
+      setFocusSession("all");
+    }
+  }
+
+  function pickSession(v: typeof focusSession) {
+    setFocusSession(v);
+    // Drop any incompatible streams from the multi-select so the chart never
+    // tries to plot a (session, stream) combo that can't exist.
+    if (v === "2025-26") {
+      setStreamFilter((prev) => new Set([...prev].filter((s) => s === "BLIS")));
+    } else if (v !== "all") {
+      setStreamFilter((prev) => new Set([...prev].filter((s) => s !== "BLIS")));
+    }
   }
 
   const progressionData = useMemo(() => {
@@ -110,6 +150,7 @@ export default function AdmissionsPage() {
       const row: Record<string, string | number | null> = { semLabel: ROMAN[sem - 1] };
       for (const s of targetSessions) {
         for (const st of activeStreams) {
+          if (!isValidSessionStreamPair(s as Session, st as Stream)) continue;
           const key = focusSession === "all" ? `${s} · ${st}` : st;
           const hit = rows.find((r) => r.session === s && r.stream === st && r.semester === sem);
           row[key] = hit ? hit.count : null;
@@ -122,20 +163,39 @@ export default function AdmissionsPage() {
   const progressionLines = useMemo(() => {
     if (focusSession === "all") {
       return sessions.flatMap((s) =>
-        activeStreams.map((st) => ({
-          key: `${s} · ${st}`,
-          color: comboColor(s, st, sessions, streams),
-        }))
+        activeStreams
+          // Drop combinations the cross-rule forbids (e.g. 2025-26 · B.A) so
+          // they don't pollute the legend with empty lines.
+          .filter((st) => isValidSessionStreamPair(s as Session, st as Stream))
+          .map((st) => ({
+            key: `${s} · ${st}`,
+            color: comboColor(s, st, sessions, streams),
+          }))
       );
     }
-    return activeStreams.map((st) => ({ key: st, color: STREAM_COLORS[st] ?? "#6d28d9" }));
+    return activeStreams
+      .filter((st) => isValidSessionStreamPair(focusSession as Session, st as Stream))
+      .map((st) => ({ key: st, color: STREAM_COLORS[st] ?? "#6d28d9" }));
   }, [focusSession, sessions, streams, activeStreams]);
 
+  // "Current enrolment" per session — for each (session, stream) keep only
+  // the row with the highest semester (so retention isn't double-counted as
+  // sem 1 + sem 2 etc.) then sum across streams within each session.
   const sessionTotals = useMemo(() => {
     if (!rows) return [];
-    const map = new Map<string, number>();
-    for (const r of rows) map.set(r.session, (map.get(r.session) ?? 0) + r.count);
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([session, total]) => ({ session, total }));
+    const latestByPair = new Map<string, Row>();
+    for (const r of rows) {
+      const k = `${r.session}__${r.stream}`;
+      const cur = latestByPair.get(k);
+      if (!cur || r.semester > cur.semester) latestByPair.set(k, r);
+    }
+    const totals = new Map<string, number>();
+    for (const r of latestByPair.values()) {
+      totals.set(r.session, (totals.get(r.session) ?? 0) + r.count);
+    }
+    return [...totals.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([session, total]) => ({ session, total }));
   }, [rows]);
 
   const currentOnRoll = useMemo(() => {
@@ -159,6 +219,7 @@ export default function AdmissionsPage() {
     const out: { label: string; from: number; to: number; semFrom: string; semTo: string; drop: number; pct: number; color: string }[] = [];
     for (const s of sessions) {
       for (const st of activeStreams) {
+        if (!isValidSessionStreamPair(s as Session, st as Stream)) continue;
         const counts = Array.from({ length: 8 }, (_, i) => {
           const hit = rows.find((r) => r.session === s && r.stream === st && r.semester === i + 1);
           return hit?.count ?? null;
@@ -195,7 +256,7 @@ export default function AdmissionsPage() {
           <div className="grid gap-3 sm:grid-cols-4">
             <Stat label="Total Enrolled (latest sem)" value={currentOnRoll.total.toLocaleString()} />
             {sessionTotals.map((s) => (
-              <Stat key={s.session} label={`Session ${s.session}`} value={s.total.toLocaleString()} sub="all sems combined" />
+              <Stat key={s.session} label={`Session ${s.session}`} value={s.total.toLocaleString()} sub="currently on roll" />
             ))}
           </div>
 
@@ -204,11 +265,11 @@ export default function AdmissionsPage() {
               <span className="text-sm font-semibold mr-1">Session:</span>
               {[
                 { v: "all" as const, l: "All sessions" },
-                ...sessions.map((s) => ({ v: s, l: s })),
+                ...visibleSessions.map((s) => ({ v: s, l: s })),
               ].map(({ v, l }) => (
                 <button
                   key={v}
-                  onClick={() => setFocusSession(v)}
+                  onClick={() => pickSession(v)}
                   className={`text-xs sm:text-sm px-3 py-1.5 rounded-full border transition ${
                     focusSession === v ? "brand-gradient text-white border-transparent" : "border-foreground/15 hover:border-foreground/40"
                   }`}
@@ -227,7 +288,7 @@ export default function AdmissionsPage() {
               >
                 All streams
               </button>
-              {streams.map((st) => {
+              {visibleStreams.map((st) => {
                 const on = streamFilter.has(st);
                 return (
                   <button
