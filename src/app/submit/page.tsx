@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   DEPARTMENTS,
-  SESSIONS,
-  MONTHS,
   ROMAN,
+  SESSION_DURATION_SEMS,
   computeSemester,
+  getMonths,
   sessionFromSemesterMonth,
+  sessionsForFaculty,
+  type Faculty,
   type Session,
   type MonthKey,
 } from "@/lib/constants";
@@ -46,6 +48,23 @@ export default function SubmitPage() {
   const [status, setStatus] = useState<null | { ok: boolean; msg: string }>(null);
   const [loading, setLoading] = useState(false);
   const [lastSubmitted, setLastSubmitted] = useState<LastSubmitted | null>(null);
+
+  // Months are computed on mount so the dropdown always includes the current
+  // calendar month — no redeploy needed when April rolls into May.
+  const months = useMemo(() => getMonths(), []);
+
+  // Sessions are filtered by the active dept's faculty so BLIS teachers only
+  // see the 1-year session and others don't see it. `activeDept` works in both
+  // phases — Step 1 reads from the dropdown, Step 2 reads from saved identity.
+  const activeDeptName = identity?.department ?? deptInput;
+  const activeDept = DEPARTMENTS.find((d) => d.name === activeDeptName);
+  const availableSessions = useMemo<readonly Session[]>(() => {
+    const facultyKey: Faculty | undefined = activeDept?.faculty;
+    return facultyKey ? sessionsForFaculty(facultyKey) : [];
+  }, [activeDept?.faculty]);
+
+  // Cap the semester dropdown to the chosen session's duration (e.g. BLIS = 2).
+  const maxSemForSession = session ? SESSION_DURATION_SEMS[session as Session] : 8;
 
   // Load identity from localStorage once
   useEffect(() => {
@@ -137,7 +156,7 @@ export default function SubmitPage() {
       if (!res.ok) throw new Error(data.error ?? "Submission failed");
 
       const dept = DEPARTMENTS.find((d) => d.name === identity.department);
-      const monthLabel = MONTHS.find((m) => m.key === monthKey)?.label ?? String(monthKey);
+      const monthLabel = months.find((m) => m.key === monthKey)?.label ?? String(monthKey);
       setLastSubmitted({
         teacherName: identity.teacherName,
         department: identity.department,
@@ -222,8 +241,8 @@ export default function SubmitPage() {
     );
   }
 
-  // STEP 2 — per-month submission
-  const dept = DEPARTMENTS.find((d) => d.name === identity.department);
+  // STEP 2 — per-month submission. `activeDept` already resolves identity → dept.
+  const dept = activeDept;
 
   return (
     <div className={lastSubmitted ? "max-w-6xl mx-auto" : "max-w-2xl mx-auto"}>
@@ -273,7 +292,7 @@ export default function SubmitPage() {
               onChange={(e) => onMonthChange(e.target.value as MonthKey | "")}
             >
               <option value="">— Select month —</option>
-              {MONTHS.map((m) => (
+              {months.map((m) => (
                 <option key={m.key} value={m.key}>
                   {m.label}
                 </option>
@@ -290,7 +309,7 @@ export default function SubmitPage() {
               onChange={(e) => onSessionChange(e.target.value as Session | "")}
             >
               <option value="">— Select session —</option>
-              {SESSIONS.map((s) => (
+              {availableSessions.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -309,7 +328,7 @@ export default function SubmitPage() {
               onChange={(e) => onSemesterChange(e.target.value)}
             >
               <option value="">— Select semester —</option>
-              {ROMAN.map((r, i) => (
+              {ROMAN.slice(0, maxSemForSession).map((r, i) => (
                 <option key={r} value={i + 1}>
                   Sem {r}
                 </option>

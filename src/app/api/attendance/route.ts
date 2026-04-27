@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { Attendance } from "@/models/Attendance";
-import { DEPARTMENTS, SESSIONS, MONTHS, computeSemester, type Session, type MonthKey } from "@/lib/constants";
+import {
+  DEPARTMENTS,
+  SESSIONS,
+  SESSION_DURATION_SEMS,
+  computeSemester,
+  isValidMonthKey,
+  type Session,
+  type MonthKey,
+} from "@/lib/constants";
 import { requireAuth } from "@/lib/authGuard";
 
 // Attendance analytics must reflect every newly-submitted row immediately;
@@ -22,7 +30,7 @@ export async function POST(req: Request) {
     const dept = DEPARTMENTS.find((d) => d.name === department);
     if (!dept) return NextResponse.json({ error: "Invalid department" }, { status: 400 });
     if (!SESSIONS.includes(session)) return NextResponse.json({ error: "Invalid session" }, { status: 400 });
-    if (!MONTHS.find((m) => m.key === monthKey))
+    if (typeof monthKey !== "string" || !isValidMonthKey(monthKey))
       return NextResponse.json({ error: "Invalid month" }, { status: 400 });
 
     const pct = Number(percentage);
@@ -30,8 +38,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Percentage must be 0–100" }, { status: 400 });
 
     const semester = computeSemester(session as Session, monthKey as MonthKey);
-    if (semester < 1 || semester > 8)
-      return NextResponse.json({ error: "Semester out of range for this session/month" }, { status: 400 });
+    const maxSem = SESSION_DURATION_SEMS[session as Session];
+    if (semester < 1 || semester > maxSem)
+      return NextResponse.json(
+        { error: `Semester out of range for session ${session} (max sem ${maxSem})` },
+        { status: 400 }
+      );
 
     const students = Array.isArray(distinctionStudents)
       ? distinctionStudents.map((s: unknown) => String(s).trim()).filter(Boolean)
